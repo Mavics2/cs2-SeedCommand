@@ -1,0 +1,18 @@
+# Build output
+bin/
+obj/
+*.user
+*.suo
+*.pdb
+
+# IDE
+.vs/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Don't commit secrets baked into compiled config
+SeedCommand.json.local
