@@ -7,9 +7,26 @@ A CounterStrikeSharp companion plugin for [Nereziel/cs2-WeaponPaints](https://gi
 > Attribution to that Steam profile is required when redistributing this plugin.
 > No monetary compensation requested — only acknowledgment.
 
-![Skin selection menu in-game](docs/screenshot-menu.png)
+![Butterfly Knife Doppler skin menu with phase labels and paint IDs](docs/screenshot-menu.jpg)
 
-> *Drop a screenshot or GIF of the in-game menu at `docs/screenshot-menu.png`.*
+*Butterfly Knife Doppler menu — paint IDs in brackets `[415]` `[421]` `[619]` let you pick the exact phase (Ruby / Phase 4 / Sapphire / Black Pearl / Phase 2) which is otherwise indistinguishable since WeaponPaints' data calls every variant just "Doppler".*
+
+<details>
+<summary>More screenshots</summary>
+
+**`!sticker` — pick from a curated list of high-value tournament stickers:**
+![Sticker picker](docs/screenshot-stickers.jpg)
+
+**`!ws` — full skin menu for the held weapon:**
+![Skin menu](docs/screenshot-skins.jpg)
+
+**Result — iBUYPOWER (Holo) Katowice 2014 stickers applied to AK-47 Wild Lotus:**
+![Stickers applied](docs/screenshot-applied.jpg)
+
+**Glock-18 Fade with iBUYPOWER (Holo) Katowice 2014:**
+![Glock Fade iBUYPOWER](docs/screenshot-glock-ibp.jpg)
+
+</details>
 
 ---
 
