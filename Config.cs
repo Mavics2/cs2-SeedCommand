@@ -23,4 +23,10 @@ public sealed class SeedCommandConfig : BasePluginConfig
     // Requires sv_cheats 1 (server-side). Disable if you don't have cheats enabled.
     [JsonPropertyName("ForceWeaponRefresh")]
     public bool ForceWeaponRefresh { get; set; } = true;
+
+    // After applying a skin, force the player to respawn so WeaponPaints reloads their loadout
+    // from DB on spawn. This GUARANTEES instant visual updates. Recommended for practice/bot
+    // servers where losing position on respawn is fine. Set to false for competitive servers.
+    [JsonPropertyName("ForceRespawnOnSkinChange")]
+    public bool ForceRespawnOnSkinChange { get; set; } = false;
 }

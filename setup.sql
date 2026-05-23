@@ -1,11 +1,10 @@
 ﻿-- ============================================================
--- SeedCommand SQL setup script
+-- SeedCommand SQL setup script (idempotent — safe to re-run)
 --
--- Run this on the same database that WeaponPaints uses (e.g. `weaponpaints`).
--- It creates the `best_seeds` lookup table, populates it with community-known
--- tier-1 patterns for popular pattern-dependent skins, and installs BEFORE
--- UPDATE / BEFORE INSERT triggers on `wp_player_skins` that auto-apply
--- the best seed and reset wear to Factory New whenever a skin's paint changes.
+-- Run on the same database WeaponPaints uses. Creates best_seeds table,
+-- populates it with community-known tier-1 patterns, and installs BEFORE
+-- UPDATE/INSERT triggers on wp_player_skins that auto-apply the best seed
+-- and reset wear to Factory New whenever a skin's paint changes.
 --
 -- Usage:
 --   mariadb -u weaponpaints -p weaponpaints < setup.sql
@@ -19,7 +18,6 @@ CREATE TABLE IF NOT EXISTS best_seeds (
     PRIMARY KEY (weapon_defindex, weapon_paint_id)
 );
 
--- Populate (idempotent)
 INSERT INTO best_seeds (weapon_defindex, weapon_paint_id, best_seed, note) VALUES
   (500, 12, 130, 'Bayonet Crimson Web #130 - three web centers tier 1'),
   (503, 12, 107, 'Classic Crimson Web #107 - three web centers tier 1'),
@@ -144,7 +142,6 @@ INSERT INTO best_seeds (weapon_defindex, weapon_paint_id, best_seed, note) VALUE
   (505, 416, 936, 'Flip Knife Doppler Sapphire - max'),
   (507, 416, 251, 'Karambit Doppler #251 - Rank 1 per Steam guide'),
   (508, 416, 609, 'M9 Doppler #609 - Rank 1 per Steam guide'),
-  (515, 416, 602, 'Butterfly Doppler #602 - Rank 1 per Steam guide'),
   (521, 416, 136, 'Nomad Doppler Sapphire #136 - Rank 1 per Steam guide'),
   (522, 416, 704, 'Stiletto Doppler #704 - best Rank 1 per Steam guide'),
   (523, 416, 613, 'Talon Doppler #613 - Rank 1 per Steam guide'),
@@ -153,7 +150,6 @@ INSERT INTO best_seeds (weapon_defindex, weapon_paint_id, best_seed, note) VALUE
   (505, 417, 936, 'Flip Knife Doppler Black Pearl - max'),
   (507, 417, 251, 'Karambit Black Pearl #251 - Max BP per Steam guide'),
   (508, 417, 609, 'M9 Black Pearl #609 - Rank 1 per Steam guide'),
-  (515, 417, 602, 'Butterfly Doppler Black Pearl - #602 (Black Pearl seed)'),
   (521, 417, 136, 'Nomad Black Pearl #136 - matches Ruby/Sapphire tier 1'),
   (522, 417, 704, 'Stiletto Black Pearl #704 - matches Ruby/Sapphire tier 1'),
   (523, 417, 613, 'Talon Black Pearl #613 - matches Ruby/Sapphire tier 1'),
@@ -177,7 +173,6 @@ INSERT INTO best_seeds (weapon_defindex, weapon_paint_id, best_seed, note) VALUE
   (507, 419, 350, 'Karambit Doppler P2 #350 - Max Pink/Galaxy per Steam guide'),
   (508, 419, 412, 'M9 Doppler P2 #412 - first Tier 1 Max Pink per Steam guide'),
   (514, 419, 117, 'Bowie Doppler P2 #117 - Tier 1 example per Steam guide'),
-  (515, 419, 61, 'Butterfly Doppler P2 #61 - first Tier 1 Max Pink per Steam guide'),
   (517, 419, 412, 'Paracord Doppler P2 #412 - best Max Pink per Steam guide'),
   (518, 419, 412, 'Survival Doppler P2 #412 - best Max Pink per Steam guide'),
   (519, 419, 412, 'Ursus Doppler P2 #412 - best Tier 1 per Steam guide'),
@@ -245,6 +240,9 @@ INSERT INTO best_seeds (weapon_defindex, weapon_paint_id, best_seed, note) VALUE
   (508, 572, 886, 'M9 GD P4 - max dark'),
   (509, 572, 763, 'Huntsman GD P4 #763 - best Cyan per Steam guide'),
   (515, 572, 701, 'Butterfly GD P4 #701 - premium Tier 1 Max Lime per Steam guide'),
+  (515, 617, 602, 'Butterfly Black Pearl (BFK paint 617) - signature #602 per Steam guide'),
+  (515, 618, 61, 'Butterfly Doppler P2 (BFK paint 618) - first Tier 1 Pink per Steam guide'),
+  (515, 619, 602, 'Butterfly Sapphire (BFK paint 619) - signature #602 per Steam guide'),
   (33, 752, 14, 'MP7 Fade - tier 1 max fade'),
   (7, 763, 1, 'AK-47 Gold Arabesque - uniform'),
   (3, 831, 904, 'Five-SeveN Heat Treated #904 - top Tier 1 per Steam guide'),
@@ -319,7 +317,10 @@ INSERT INTO best_seeds (weapon_defindex, weapon_paint_id, best_seed, note) VALUE
   (5027, 10073, 1, 'Moto Blood Pressure - tier 1'),
   (5030, 10073, 1, 'Sport Gloves Bronze Morph - uniform'),
   (5027, 10074, 1, 'Moto Turtle - tier 1'),
-  (5030, 10076, 85, 'Sport Nocts #85 - first Tier 1 per Steam guide');
+  (5030, 10076, 85, 'Sport Nocts #85 - first Tier 1 per Steam guide')
+ON DUPLICATE KEY UPDATE
+    best_seed = VALUES(best_seed),
+    note      = VALUES(note);
 
 -- ============================================================
 -- Triggers — auto-apply best_seed + Factory New wear when paint changes

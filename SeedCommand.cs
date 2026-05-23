@@ -39,7 +39,7 @@ namespace SeedCommand;
 public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 {
     public override string ModuleName    => "SeedCommand";
-    public override string ModuleVersion => "4.0.0";
+    public override string ModuleVersion => "4.4.0";
     public override string ModuleAuthor  => "Claude Code — commissioned by Mavi (steamcommunity.com/profiles/76561198147748231)";
     public override string ModuleDescription => "WeaponPaints companion: instant skin menus + best-seed + wear control";
 
@@ -52,6 +52,14 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 
     private static readonly PluginCapability<IMenuApi> MenuCapability = new("menu:nfcore");
     private IMenuApi? _menuApi;
+
+    // Reflection handles into WeaponPaints — used to refresh a player's loadout
+    // directly (bypass !wp chat path which doesn't reliably trigger from another plugin)
+    private object? _wpInstance;
+    private System.Reflection.MethodInfo? _wpRefreshWeapons;
+    private object? _wpWeaponSync;
+    private System.Reflection.MethodInfo? _wpGetPlayerData;
+    private Type? _wpPlayerInfoType;
 
     // weapon_name -> list of (paint_id, paint_name)
     private readonly Dictionary<string, List<(int paint, string name)>> _paintsByWeapon = new();
@@ -85,11 +93,33 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
     private static readonly Dictionary<int, string> KnifeDefindexToWeaponName =
         KnifeTypes.ToDictionary(k => k.defindex, k => k.weaponName);
 
+    // Curated list of high-value tournament stickers. IDs sourced from
+    // WeaponPaints/data/stickers_en.json. Add more here if you want them in !sticker.
+    private static readonly List<(int id, string display)> HighValueStickers = new()
+    {
+        ( 60, "iBUYPOWER (Holo) | Katowice 2014"),
+        ( 76, "Titan (Holo) | Katowice 2014"),
+        ( 49, "3DMAX (Holo) | Katowice 2014"),
+        ( 51, "compLexity Gaming (Holo) | Katowice 2014"),
+        ( 53, "Team Dignitas (Holo) | Katowice 2014"),
+        ( 58, "HellRaisers (Holo) | Katowice 2014"),
+        ( 64, "LGB eSports (Holo) | Katowice 2014"),
+        ( 66, "mousesports (Holo) | Katowice 2014"),
+        ( 74, "Reason Gaming (Holo) | Katowice 2014"),
+        ( 80, "Vox Eminor (Holo) | Katowice 2014"),
+        ( 37, "Crown (Foil)"),
+        (102, "King on the Field"),
+        (103, "Howling Dawn"),
+    };
+
     private static readonly Dictionary<int, string> DopplerPhaseTag = new()
     {
         { 415, "Ruby" }, { 416, "Sapphire" }, { 417, "Black Pearl" },
         { 418, "Phase 1" }, { 419, "Phase 2" }, { 420, "Phase 3" }, { 421, "Phase 4" },
-        { 617, "Sapphire (BFK)"    }, { 618, "Phase 2 (BFK)" }, { 619, "Black Pearl (BFK)" },
+        // Butterfly Knife-specific Doppler paints (user-verified in-game):
+        { 617, "Black Pearl (BFK)" },
+        { 618, "Phase 2 (BFK)" },  // pink/galaxy, sometimes mistaken for Ruby
+        { 619, "Sapphire (BFK)" },
         { 852, "Phase 1 (Talon)" }, { 853, "Phase 2 (Talon)" }, { 854, "Phase 3 (Talon)" }, { 855, "Phase 4 (Talon)" },
         { 568, "Emerald" }, { 569, "GD Phase 1" }, { 570, "GD Phase 2" }, { 571, "GD Phase 3" }, { 572, "GD Phase 4" },
     };
@@ -110,8 +140,96 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
     {
         _menuApi = MenuCapability.Get();
         Console.WriteLine(_menuApi == null
-            ? "[SeedCommand 4.0] WARNING: MenuManager (menu:nfcore) not loaded."
-            : "[SeedCommand 4.0] MenuManager acquired.");
+            ? "[SeedCommand] WARNING: MenuManager (menu:nfcore) not loaded."
+            : "[SeedCommand] MenuManager acquired.");
+        TryHookWeaponPaints();
+    }
+
+    // Find WeaponPaints plugin via reflection and cache the method handles we need.
+    // Lets us refresh a player's loadout without going through the !wp chat trigger
+    // (which doesn't reliably fire when injected via ExecuteClientCommand).
+    private void TryHookWeaponPaints()
+    {
+        try
+        {
+            var wpAsm = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == "WeaponPaints");
+            if (wpAsm == null) { Console.WriteLine("[SeedCommand] WeaponPaints assembly not found."); return; }
+
+            var wpType = wpAsm.GetTypes().FirstOrDefault(t => t.Name == "WeaponPaints" && typeof(BasePlugin).IsAssignableFrom(t));
+            if (wpType == null) { Console.WriteLine("[SeedCommand] WeaponPaints class not found."); return; }
+
+            // Static Instance property
+            var instanceProp = wpType.GetProperty("Instance",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            _wpInstance = instanceProp?.GetValue(null);
+            if (_wpInstance == null)
+            {
+                var instanceField = wpType.GetField("Instance",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                _wpInstance = instanceField?.GetValue(null);
+            }
+            if (_wpInstance == null) { Console.WriteLine("[SeedCommand] WeaponPaints.Instance not accessible."); return; }
+
+            _wpRefreshWeapons = wpType.GetMethod("RefreshWeapons",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+            // WeaponSync field on the WeaponPaints instance
+            var wsField = wpType.GetField("WeaponSync",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            _wpWeaponSync = wsField?.GetValue(_wpInstance);
+            if (_wpWeaponSync != null)
+            {
+                _wpGetPlayerData = _wpWeaponSync.GetType().GetMethod("GetPlayerData");
+            }
+
+            _wpPlayerInfoType = wpAsm.GetType("WeaponPaints.PlayerInfo");
+
+            Console.WriteLine($"[SeedCommand] WP refs: instance={_wpInstance != null}, RefreshWeapons={_wpRefreshWeapons != null}, GetPlayerData={_wpGetPlayerData != null}, PlayerInfo={_wpPlayerInfoType != null}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SeedCommand] WP reflection error: {ex.Message}");
+        }
+    }
+
+    // Refresh a player's loadout in WeaponPaints WITHOUT relying on the !wp chat trigger.
+    // Calls WP.WeaponSync.GetPlayerData() (reloads cache from DB) then WP.RefreshWeapons() (drops + re-gives).
+    private void TriggerWpRefresh(CCSPlayerController player)
+    {
+        if (_wpInstance == null || _wpRefreshWeapons == null) return;
+        try
+        {
+            // Refresh DB cache (async fire-and-forget)
+            if (_wpGetPlayerData != null && _wpPlayerInfoType != null && _wpWeaponSync != null)
+            {
+                var pi = Activator.CreateInstance(_wpPlayerInfoType);
+                if (pi != null)
+                {
+                    SetIfExists(pi, "UserId",    player.UserId);
+                    SetIfExists(pi, "Slot",      player.Slot);
+                    SetIfExists(pi, "Index",     (int)player.Index);
+                    SetIfExists(pi, "SteamId",   player.SteamID.ToString());
+                    SetIfExists(pi, "Name",      player.PlayerName);
+                    SetIfExists(pi, "IpAddress", player.IpAddress?.Split(':')[0] ?? "");
+                    _wpGetPlayerData.Invoke(_wpWeaponSync, new object[] { pi });
+                }
+            }
+            // Re-apply weapons (drops + re-spawns with fresh cached paints)
+            _wpRefreshWeapons.Invoke(_wpInstance, new object[] { player });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SeedCommand] TriggerWpRefresh error: {ex.Message}");
+        }
+    }
+
+    private static void SetIfExists(object obj, string propName, object? value)
+    {
+        var prop = obj.GetType().GetProperty(propName);
+        if (prop != null && prop.CanWrite) { try { prop.SetValue(obj, value); } catch { } }
+        var field = obj.GetType().GetField(propName);
+        if (field != null) { try { field.SetValue(obj, value); } catch { } }
     }
 
     public override void Unload(bool hotReload)
@@ -120,24 +238,31 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
         RemoveCommandListener("say_team", OnPlayerSay, HookMode.Pre);
     }
 
-    private string ResolveSkinsJsonPath()
+    private string ResolveJsonPath(string configValue, string fileName)
     {
-        if (!string.IsNullOrEmpty(Config.SkinsJsonPath) && File.Exists(Config.SkinsJsonPath))
-            return Config.SkinsJsonPath;
-        // Auto-detect: same drive as plugin DLL
-        var dllDir = Path.GetDirectoryName(typeof(SeedCommandPlugin).Assembly.Location) ?? "";
-        // ../../WeaponPaints/data/skins_en.json
-        var candidate = Path.GetFullPath(Path.Combine(dllDir, "..", "WeaponPaints", "data", "skins_en.json"));
-        return candidate;
+        if (!string.IsNullOrEmpty(configValue) && File.Exists(configValue))
+            return configValue;
+
+        // CS# BasePlugin.ModulePath returns the plugin's DLL full path (reliable across loaders)
+        string? dllPath = null;
+        try { dllPath = ModulePath; } catch { }
+
+        var dllDir = !string.IsNullOrEmpty(dllPath) ? Path.GetDirectoryName(dllPath) ?? "" : "";
+        // Sibling plugin folder pattern: plugins/SeedCommand/ -> plugins/WeaponPaints/data/<file>
+        if (!string.IsNullOrEmpty(dllDir))
+        {
+            var candidate = Path.GetFullPath(Path.Combine(dllDir, "..", "WeaponPaints", "data", fileName));
+            if (File.Exists(candidate)) return candidate;
+        }
+
+        // Final fallback: relative to game's working directory
+        var cwd = Directory.GetCurrentDirectory();
+        var fallback = Path.GetFullPath(Path.Combine(cwd, "..", "..", "csgo", "addons", "counterstrikesharp", "plugins", "WeaponPaints", "data", fileName));
+        return fallback;
     }
 
-    private string ResolveGlovesJsonPath()
-    {
-        if (!string.IsNullOrEmpty(Config.GlovesJsonPath) && File.Exists(Config.GlovesJsonPath))
-            return Config.GlovesJsonPath;
-        var dllDir = Path.GetDirectoryName(typeof(SeedCommandPlugin).Assembly.Location) ?? "";
-        return Path.GetFullPath(Path.Combine(dllDir, "..", "WeaponPaints", "data", "gloves_en.json"));
-    }
+    private string ResolveSkinsJsonPath()  => ResolveJsonPath(Config.SkinsJsonPath,  "skins_en.json");
+    private string ResolveGlovesJsonPath() => ResolveJsonPath(Config.GlovesJsonPath, "gloves_en.json");
 
     private void LoadSkinData()
     {
@@ -229,6 +354,10 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             case "!gloves":
                 Server.NextFrame(() => OpenGlovesMenu(slot));
                 return HookResult.Stop;
+            case "!sticker":
+            case "!stickers":
+                Server.NextFrame(() => OpenStickerMenu(slot));
+                return HookResult.Stop;
         }
 
         return HookResult.Continue;
@@ -255,6 +384,8 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             };
             menuDyn.AddMenuOption(display, handler);
         }
+        // Credit shown in chat (visually below the center menu HUD), not as a menu option
+        p.PrintToChat(" \x10by \x06Mavi");
         menuDyn.Open(p);
     }
 
@@ -340,6 +471,8 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             };
             menuDyn.AddMenuOption(label, h);
         }
+        // Credit shown in chat (visually below the center menu HUD), not as a menu option
+        p.PrintToChat(" \x10by \x06Mavi");
         menuDyn.Open(p);
     }
 
@@ -371,6 +504,8 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             };
             menuDyn.AddMenuOption(label, h);
         }
+        // Credit shown in chat (visually below the center menu HUD), not as a menu option
+        p.PrintToChat(" \x10by \x06Mavi");
         menuDyn.Open(p);
     }
 
@@ -415,7 +550,111 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             Server.NextFrame(() =>
             {
                 var pp = Utilities.GetPlayerFromSlot(slot);
-                if (pp != null && pp.IsValid) { pp.PrintToChat(reply); pp.ExecuteClientCommand("say !wp"); }
+                if (pp != null && pp.IsValid) { pp.PrintToChat(reply); TriggerWpRefresh(pp); }
+            });
+        });
+    }
+
+    // ============================================================
+    // !sticker → menu of high-value stickers → slot picker → apply
+    // ============================================================
+    private void OpenStickerMenu(int slot)
+    {
+        var p = Utilities.GetPlayerFromSlot(slot);
+        if (p == null || !p.IsValid) return;
+        var (active, _) = GetHeldWeapon(p);
+        if (active == null) { p.PrintToChat(" \x07[Seed]\x01 Hold a weapon first."); return; }
+
+        int defindex = active.AttributeManager.Item.ItemDefinitionIndex;
+        string weaponClassname = active.DesignerName;
+
+        var menu = CreateMenu("Pick a sticker");
+        if (menu == null) return;
+        dynamic menuDyn = menu;
+
+        foreach (var (id, display) in HighValueStickers)
+        {
+            int capId = id; string capDisplay = display;
+            int capDef = defindex; string capCls = weaponClassname;
+            Action<CCSPlayerController, object> h = (c, o) =>
+            {
+                if (c == null || !c.IsValid) return;
+                OpenStickerSlotMenu(c.Slot, capDef, capCls, capId, capDisplay);
+            };
+            menuDyn.AddMenuOption(display, h);
+        }
+        p.PrintToChat(" \x10by \x06Mavi");
+        menuDyn.Open(p);
+    }
+
+    private void OpenStickerSlotMenu(int slot, int defindex, string weaponClassname, int stickerId, string stickerName)
+    {
+        var p = Utilities.GetPlayerFromSlot(slot);
+        if (p == null || !p.IsValid) return;
+        var menu = CreateMenu($"{stickerName} — pick a slot");
+        if (menu == null) return;
+        dynamic menuDyn = menu;
+
+        for (int i = 0; i < 5; i++)
+        {
+            int capSlotIdx = i;
+            int capDef = defindex; string capCls = weaponClassname; int capStickerId = stickerId; string capStickerName = stickerName;
+            Action<CCSPlayerController, object> h = (c, o) =>
+            {
+                if (c == null || !c.IsValid) return;
+                ApplySticker(c.Slot, capDef, capCls, capSlotIdx, capStickerId, capStickerName);
+            };
+            menuDyn.AddMenuOption($"Slot {capSlotIdx + 1}", h);
+        }
+        // Also offer "All 5 slots" as a convenience
+        int allDef = defindex; string allCls = weaponClassname; int allId = stickerId; string allName = stickerName;
+        Action<CCSPlayerController, object> applyAll = (c, o) =>
+        {
+            if (c == null || !c.IsValid) return;
+            for (int i = 0; i < 5; i++) ApplySticker(c.Slot, allDef, allCls, i, allId, allName, suppressRefresh: i < 4);
+        };
+        menuDyn.AddMenuOption("ALL 5 slots", applyAll);
+        menuDyn.Open(p);
+    }
+
+    private void ApplySticker(int slot, int defindex, string weaponClassname, int stickerSlot, int stickerId, string stickerName, bool suppressRefresh = false)
+    {
+        var p = Utilities.GetPlayerFromSlot(slot);
+        if (p == null || !p.IsValid) return;
+        string steamId = p.SteamID.ToString();
+        int team = p.TeamNum;
+        string column = $"weapon_sticker_{stickerSlot}";
+        // WP sticker DB format: id;schema;OffsetX;OffsetY;Wear;Scale;Rotation
+        string stickerData = $"{stickerId};0;0;0;0;1;0";
+
+        Task.Run(async () =>
+        {
+            string reply;
+            try
+            {
+                await using var conn = new MySqlConnection(ConnString);
+                await conn.OpenAsync();
+                // Column name is hardcoded (whitelist via stickerSlot 0-4 only) so SQL injection safe
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = $@"
+                    INSERT INTO wp_player_skins (steamid, weapon_team, weapon_defindex, weapon_paint_id, weapon_wear, weapon_seed, {column})
+                    VALUES (@sid, @team, @def, 0, 0.000001, 0, @data)
+                    ON DUPLICATE KEY UPDATE {column} = @data";
+                cmd.Parameters.AddWithValue("@sid", steamId);
+                cmd.Parameters.AddWithValue("@team", team);
+                cmd.Parameters.AddWithValue("@def", defindex);
+                cmd.Parameters.AddWithValue("@data", stickerData);
+                await cmd.ExecuteNonQueryAsync();
+                reply = $" \x06[Seed]\x01 Sticker slot {stickerSlot + 1}: \x06{stickerName}\x01 applied.";
+            }
+            catch (Exception ex) { reply = $" \x07[Seed]\x01 SQL: {ex.Message}"; }
+
+            Server.NextFrame(() =>
+            {
+                var pp = Utilities.GetPlayerFromSlot(slot);
+                if (pp == null || !pp.IsValid) return;
+                pp.PrintToChat(reply);
+                if (!suppressRefresh) TriggerWpRefresh(pp);
             });
         });
     }
@@ -461,9 +700,8 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
                 var pp = Utilities.GetPlayerFromSlot(slot);
                 if (pp == null || !pp.IsValid) return;
                 pp.PrintToChat(reply);
-                pp.ExecuteClientCommand("say !wp");
-                if (Config.ForceWeaponRefresh && !string.IsNullOrEmpty(weaponClassname))
-                    AddTimer(0.5f, () => ForceWeaponRefresh(slot, weaponClassname));
+                // Directly invoke WeaponPaints' refresh via reflection - bypasses the chat trigger
+                TriggerWpRefresh(pp);
             });
         });
     }
@@ -472,6 +710,15 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
     {
         var p = Utilities.GetPlayerFromSlot(slot);
         if (p == null || !p.IsValid) return;
+
+        // Strategy 1: Full respawn — most reliable, WeaponPaints reloads loadout from DB on spawn.
+        // Use this for practice/bot servers where position loss is acceptable.
+        if (Config.ForceRespawnOnSkinChange)
+        {
+            try { p.Respawn(); return; } catch { /* fall through to drop+give */ }
+        }
+
+        // Strategy 2: Drop + give (less disruptive but relies on WP's cache being fresh)
         var pawn = p.PlayerPawn.Value;
         if (pawn == null) return;
         try
@@ -547,8 +794,7 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
                 if (p != null && p.IsValid)
                 {
                     p.PrintToChat(reply);
-                    p.ExecuteClientCommand("say !wp");
-                    if (Config.ForceWeaponRefresh) AddTimer(0.5f, () => ForceWeaponRefresh(slot, GetWeaponClassname(slot)));
+                    TriggerWpRefresh(p);
                 }
             });
         });
@@ -621,9 +867,7 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
                 var p = Utilities.GetPlayerFromSlot(slot);
                 if (p == null || !p.IsValid) return;
                 p.PrintToChat(reply);
-                p.ExecuteClientCommand("say !wp");
-                if (Config.ForceWeaponRefresh && !string.IsNullOrEmpty(classname))
-                    AddTimer(0.5f, () => ForceWeaponRefresh(slot, classname));
+                TriggerWpRefresh(p);
             });
         });
     }
@@ -647,6 +891,21 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
     // ============================================================
     // MenuManager helper — reflection bypasses obsolete-as-error
     // ============================================================
+    // "by Mavi" credit label rendered in epic-purple. Added as the last menu option
+    // so it appears below the scrollable list of skins/knives.
+    private const string CreditOption = "<font color='#A335EE'>by Mavi</font>";
+
+    // Appends the credit as a no-op final option on every menu we create.
+    private void AppendCreditOption(dynamic menu)
+    {
+        try
+        {
+            Action<CCSPlayerController, object> noop = (c, o) => { /* credit label — no action */ };
+            menu.AddMenuOption(CreditOption, noop);
+        }
+        catch { }
+    }
+
     private object? CreateMenu(string title)
     {
         if (_menuApi == null) return null;
@@ -660,6 +919,7 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             var parameters = best.GetParameters();
             object?[] args = new object[parameters.Length];
             args[0] = title;
+            // ButtonMenu = scrollable center-screen menu with WASD navigation
             args[1] = MenuType.ButtonMenu;
             for (int i = 2; i < parameters.Length; i++)
                 args[i] = parameters[i].IsOptional ? Type.Missing : null;
