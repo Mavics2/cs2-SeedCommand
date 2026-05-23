@@ -14,14 +14,14 @@ A CounterStrikeSharp companion plugin for [Nereziel/cs2-WeaponPaints](https://gi
 <details>
 <summary>More screenshots</summary>
 
-**`!sticker` — pick from a curated list of high-value tournament stickers:**
-![Sticker picker](docs/screenshot-stickers.jpg)
+**`!k` — knife type picker (the first menu after typing `!k`):**
+![Knife type picker](docs/screenshot-knife-picker.jpg)
 
-**`!ws` — full skin menu for the held weapon:**
-![Skin menu](docs/screenshot-skins.jpg)
+**`!ws` — full skin menu for the held weapon (AK-47 here):**
+![Skin menu](docs/screenshot-skin-menu.jpg)
 
 **Result — iBUYPOWER (Holo) Katowice 2014 stickers applied to AK-47 Wild Lotus:**
-![Stickers applied](docs/screenshot-applied.jpg)
+![AK with iBUYPOWER stickers](docs/screenshot-ak-ibp.jpg)
 
 **Glock-18 Fade with iBUYPOWER (Holo) Katowice 2014:**
 ![Glock Fade iBUYPOWER](docs/screenshot-glock-ibp.jpg)
