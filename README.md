@@ -32,18 +32,29 @@ A CounterStrikeSharp companion plugin for [Nereziel/cs2-WeaponPaints](https://gi
 
 ## What it adds
 
+### Commands
+
 | Command | Effect |
 |---|---|
-| `!k` / `!knife` | Knife type menu → on pick, instantly opens skin menu for that knife → pick → applied with best seed + FN wear + **instant visual refresh** |
+| `!k` / `!knife` | Knife type menu → on pick, instantly chains to skin menu for that knife → pick → applied with best seed + FN wear + **instant visual refresh** |
 | `!ws` | Skin menu for the weapon you're currently holding → pick → applied with best seed + FN wear + instant refresh |
 | `!gloves` | Flat list of every glove skin → pick → applied (visual on next round) |
-| `!sticker` / `!stickers` | Curated menu of 13 high-value tournament stickers (iBUYPOWER Holo Katowice 2014, Titan Holo, Howling Dawn, Crown Foil, etc.) → pick → pick slot 1-5 (or "ALL 5 slots") → applied + refresh |
+| `!sticker` / `!stickers` | Curated menu of 13 high-value tournament stickers → pick → pick slot 1-5 (or **"ALL 5 slots"** to apply to every slot at once) → applied + refresh |
 | `!seed <n>` | Manually set the paint seed on the held weapon |
 | `!bestseed` | Apply the best community-known seed for the held weapon's current paint |
-| `!wear <0-1>` / `!float <0-1>` | Set the wear/float of the held weapon (e.g. `!wear 0.001`, `!wear 0.5`) |
+| `!wear <0-1>` / `!float <0-1>` | Set the wear/float of the held weapon (e.g. `!wear 0.001`, `!wear 0.5`). Wear tier auto-reports back: FN / MW / FT / WW / BS |
 | `!fn` | Shorthand for `!wear 0.000001` (Factory New minimum) |
 
 All commands work in chat with the `!` prefix or in console with the `css_` prefix (e.g. `css_seed 661`).
+
+### Behind the scenes (no command needed)
+
+- **Auto best-seed on every paint change** — when a row's `weapon_paint_id` changes in `wp_player_skins` (from any source — your menu, WeaponPaints' own `!ws`, manual SQL), a MariaDB trigger looks up the (defindex, paint_id) pair in a bundled `best_seeds` table and sets the seed automatically. **No matter how you change a skin, the legendary pattern applies.**
+- **Auto Factory New wear** — same trigger resets `weapon_wear` to `0.000001` on every paint change.
+- **Doppler phase labels** — every Doppler/Gamma Doppler entry in the skin menu is decorated with its phase: `Doppler (Ruby)`, `Doppler (Sapphire)`, `Doppler (Black Pearl)`, `Doppler (Phase 1-4)`, `Gamma Doppler (Emerald)`, etc. — instead of WeaponPaints' raw "Doppler" for all 7 variants.
+- **Butterfly Knife paint ID handling** — Butterfly uses non-standard paint IDs (`617` Black Pearl, `618` Phase 2, `619` Sapphire instead of standard 416/417/419). The menu labels these explicitly with `[paint_id]` brackets so they're never ambiguous.
+- **Talon Knife paint ID handling** — Talon's Phase 1-4 use paints 852-855 (not the standard 418-421). Labeled accordingly.
+- **Instant visual refresh** — the plugin calls WeaponPaints' `WeaponSync.GetPlayerData()` + `RefreshWeapons()` via reflection right after applying, so the skin appears immediately (no `!wp` typing, no round restart, no respawn needed).
 
 ## How it works
 
@@ -74,7 +85,7 @@ Three mechanisms working together:
    ```sh
    mariadb -u <user> -p <database> < setup.sql
    ```
-   This creates the `best_seeds` table, populates it, and installs the triggers.
+   This creates the `best_seeds` table, populates it with 299+ tier-1 patterns, and installs the triggers. **The script is idempotent** (uses `CREATE TABLE IF NOT EXISTS` and `INSERT ... ON DUPLICATE KEY UPDATE`) — safe to re-run after pulling updates.
 3. Edit `addons/counterstrikesharp/configs/plugins/SeedCommand/SeedCommand.json` with your DB connection details (defaults to `127.0.0.1:3306` with the standard WeaponPaints credentials).
 4. Restart the server or `css_plugins reload SeedCommand`.
 
@@ -91,28 +102,39 @@ Three mechanisms working together:
   "DatabaseName": "weaponpaints",
   "SkinsJsonPath": "",
   "GlovesJsonPath": "",
-  "ForceWeaponRefresh": true
+  "ForceWeaponRefresh": true,
+  "ForceRespawnOnSkinChange": false
 }
 ```
 
-- Leave `SkinsJsonPath` / `GlovesJsonPath` empty to auto-detect (looks for them under WeaponPaints' install).
-- Set `ForceWeaponRefresh` to `false` if your server runs without `sv_cheats 1`.
+| Setting | Default | Effect |
+|---|---|---|
+| `DatabaseHost` / `Port` / `User` / `Password` / `Name` | localhost WP defaults | Same DB you use for WeaponPaints |
+| `SkinsJsonPath` / `GlovesJsonPath` | `""` (auto-detect) | Override paths to WP's `skins_en.json` / `gloves_en.json`. Auto-detect uses the plugin's `ModulePath` + `../WeaponPaints/data/`. |
+| `ForceWeaponRefresh` | `true` | After applying a skin, drop the current weapon and `give` a fresh one. Requires `sv_cheats 1`. The given weapon spawns through WeaponPaints' hooks with the new skin. Fallback when the reflection-based refresh can't be used. |
+| `ForceRespawnOnSkinChange` | `false` | Last-resort fallback: respawn the player after a skin change so WeaponPaints' `player_spawn` hook reloads everything from DB. Disruptive (you lose position + buy/loadout), only useful if both the reflection refresh AND `give` weapon refresh fail. Recommended `false`. |
 
 ## Pattern coverage
 
 The shipped `best_seeds` table covers **299 tier-1 patterns** across these skin families:
 
-- **Case Hardened** — all 20 knives + AK-47, Five-SeveN, MAC-10. Sourced from Steam community guides by [korenevskiy](https://steamcommunity.com/id/korenevskiy/myworkshopfiles/?section=guides).
-- **Slaughter** — all 19 knife defindexes.
-- **Fade** — Karambit #412, AWP #91, Glock #763, plus 100% Fade for every knife defindex.
-- **Doppler** — Ruby / Sapphire / Black Pearl + Phases 1-4 for the major knives (Karambit #251, M9 #609, Bayonet #273, Butterfly #602, Talon #613, Stiletto #704, Nomad #136, Skeleton).
-- **Gamma Doppler** — Emerald + Phases 1-4 for major knives + Glock-18.
-- **Marble Fade Fire & Ice** — best-known seeds for every knife.
-- **Crimson Web** — tier-1 web-centric seeds.
-- **Damascus Steel, Heat Treated, Tiger Tooth** — best patterns where they exist.
-- **Gloves** — Sport Pandora's Box (#264 max purple), Specialist Crimson Kimono (#560), Driver Snow Leopard, Wave Chaser, and many more.
+- **Case Hardened** (paint 44) — all 20 knives + AK-47 #661, Five-SeveN #278, MAC-10 #667. Per-knife tier 1 seeds verified individually (Karambit #387, Skeleton #403, M9 #601, Butterfly #182, Talon #55, Bayonet #555, Flip #670, Nomad #55, Stiletto #182, Huntsman #618, Kukri #652, Paracord #403, Bowie #182, Falchion #494, Gut #567, Navaja #371, Ursus #494).
+- **Fade** — Karambit/M9/Butterfly/Bayonet/Flip/Gut/Huntsman/Falchion/Stiletto/Talon at #16/#41/#412/#763 per knife (100% Fade tier from Steam guides). Plus AWP Fade #412, Glock Fade #763, MAC-10 Fade #763, MP7 Fade #14, UMP-45 Fade #34, SSG 08 Acid Fade #576.
+- **Doppler Ruby/Sapphire/Black Pearl** — per-knife: Karambit #251, M9 #609, Bayonet #273, Butterfly #602/#182, Talon #613, Stiletto #704, Nomad #136, Skeleton #936.
+- **Doppler Phase 1-4** — per-knife verified seeds (Karambit #31/#350/#763/#34, M9 #815/#412/#721/#39, Butterfly #18/#61/#34/#763, Bayonet/Flip/Gut/Huntsman/etc).
+- **Gamma Doppler Emerald + Phase 1-4** — Karambit #251, M9 #609, Butterfly #602, Glock-18 #16. Phase max-color seeds across major knives.
+- **Marble Fade Fire & Ice** — Karambit #412, M9 #763, Bayonet #412, Flip #412, Gut #412, Huntsman #2, Falchion #602, Butterfly #9, Ursus #25, Skeleton #18, Stiletto #34, Talon #763, Navaja #21.
+- **Crimson Web** — per-knife tier-1 web-centered seeds (Karambit #10, M9 #333, Bayonet #130, Classic #107, Bowie #353, Ursus #35, Gut #100, Huntsman #169, Skeleton #28).
+- **Slaughter** — 19 knife defindexes with max-red-playside seeds (Karambit/Flip/Huntsman #61, M9 #421, Bayonet #821, others #387).
+- **Damascus Steel** — 14 knives at clean-banding seed #339.
+- **Tiger Tooth** — Karambit/M9/Bayonet/Butterfly at seed 0 (uniform pattern).
+- **Heat Treated** — Desert Eagle #16, Five-SeveN #904.
+- **Gloves** — Sport Pandora's Box #264 (max purple), Sport Vice / Omega / Amphibious / Nocts / Occult #901 / Ultra Violent #163, Specialist Crimson Kimono #560 / Pillow Punchers #34 / Lime Polycam #4 / Fade #6, Driver Wave Chaser #860 / Brocade Flowers #63 (Golden Bough) / Queen Jaguar #3 / Snow Leopard #3.
+- **Misc weapons** — AK-47 Aphrodite #904, M4A1-S Blue Phosphor #644, M4A1-S Party Animal #494, M4A1-S Fade #374, Galil Sandstorm #1, MP7 Amberline #1.
 
-Butterfly Knife uses non-standard paint IDs (617 Black Pearl, 618 Phase 2, 619 Sapphire) verified in-game; Talon Knife Doppler phase paints (852-855) remain best-effort. Pull requests welcome.
+Sources: ~70 Steam community guides processed, primarily by [korenevskiy](https://steamcommunity.com/id/korenevskiy/myworkshopfiles/?section=guides) for Case Hardened / Doppler phases, plus per-knife Fade / Marble Fade / Crimson Web guides from other authors, and [profilerr.net](https://profilerr.net/cs2-crimson-web-patterns/) for Crimson Web reference.
+
+Butterfly Knife uses non-standard paint IDs (617 Black Pearl, 618 Phase 2, 619 Sapphire) — **verified in-game**. Talon Knife Doppler phase paints (852-855) remain best-effort and may need adjustment per knife. Pull requests welcome.
 
 ## High-value stickers (`!sticker`)
 
