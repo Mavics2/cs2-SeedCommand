@@ -20,11 +20,11 @@ A CounterStrikeSharp companion plugin for [Nereziel/cs2-WeaponPaints](https://gi
 **`!ws` — full skin menu for the held weapon (AK-47 here):**
 ![Skin menu](docs/screenshot-skin-menu.jpg)
 
-**Result — iBUYPOWER (Holo) Katowice 2014 stickers applied to AK-47 Wild Lotus:**
-![AK with iBUYPOWER stickers](docs/screenshot-ak-ibp.jpg)
+**Result — Titan (Holo) Katowice 2014 stickers applied to StatTrak™ AK-47 | Wild Lotus:**
+![AK Wild Lotus with Titan Holos](docs/screenshot-ak-titan.jpg)
 
-**Glock-18 Fade with iBUYPOWER (Holo) Katowice 2014:**
-![Glock Fade iBUYPOWER](docs/screenshot-glock-ibp.jpg)
+**StatTrak™ Glock-18 | Fade with Titan (Holo) Katowice 2014:**
+![Glock Fade StatTrak with Titan Holo](docs/screenshot-glock-titan.jpg)
 
 </details>
 
