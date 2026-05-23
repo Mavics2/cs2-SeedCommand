@@ -39,7 +39,7 @@ namespace SeedCommand;
 public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 {
     public override string ModuleName    => "SeedCommand";
-    public override string ModuleVersion => "4.4.0";
+    public override string ModuleVersion => "4.4.1";
     public override string ModuleAuthor  => "Claude Code — commissioned by Mavi (steamcommunity.com/profiles/76561198147748231)";
     public override string ModuleDescription => "WeaponPaints companion: instant skin menus + best-seed + wear control";
 
@@ -384,8 +384,7 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             };
             menuDyn.AddMenuOption(display, handler);
         }
-        // Credit shown in chat (visually below the center menu HUD), not as a menu option
-        p.PrintToChat(" \x10by \x06Mavi");
+        AppendCreditOption(menuDyn);
         menuDyn.Open(p);
     }
 
@@ -471,8 +470,7 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             };
             menuDyn.AddMenuOption(label, h);
         }
-        // Credit shown in chat (visually below the center menu HUD), not as a menu option
-        p.PrintToChat(" \x10by \x06Mavi");
+        AppendCreditOption(menuDyn);
         menuDyn.Open(p);
     }
 
@@ -504,8 +502,7 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             };
             menuDyn.AddMenuOption(label, h);
         }
-        // Credit shown in chat (visually below the center menu HUD), not as a menu option
-        p.PrintToChat(" \x10by \x06Mavi");
+        AppendCreditOption(menuDyn);
         menuDyn.Open(p);
     }
 
@@ -583,7 +580,7 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
             };
             menuDyn.AddMenuOption(display, h);
         }
-        p.PrintToChat(" \x10by \x06Mavi");
+        AppendCreditOption(menuDyn);
         menuDyn.Open(p);
     }
 
@@ -891,9 +888,10 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
     // ============================================================
     // MenuManager helper — reflection bypasses obsolete-as-error
     // ============================================================
-    // "by Mavi" credit label rendered in epic-purple. Added as the last menu option
-    // so it appears below the scrollable list of skins/knives.
-    private const string CreditOption = "<font color='#A335EE'>by Mavi</font>";
+    // "by Mavi" credit label rendered in epic-purple, styled as a footer-like divider
+    // so it doesn't look selectable. Added as the last menu option since MenuManager
+    // doesn't have a native footer/subtitle slot below the W/S/E/R nav hints.
+    private const string CreditOption = "── <font color='#A335EE'>by Mavi</font> ──";
 
     // Appends the credit as a no-op final option on every menu we create.
     private void AppendCreditOption(dynamic menu)
