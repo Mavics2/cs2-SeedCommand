@@ -39,7 +39,7 @@ namespace SeedCommand;
 public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 {
     public override string ModuleName    => "SeedCommand";
-    public override string ModuleVersion => "4.5.0";
+    public override string ModuleVersion => "4.5.1";
     public override string ModuleAuthor  => "Claude Code — commissioned by Mavi (steamcommunity.com/profiles/76561198147748231)";
     public override string ModuleDescription => "WeaponPaints companion: instant skin menus + best-seed + wear control";
 
@@ -819,6 +819,83 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
     {
         if (player == null || !player.IsValid || player.IsBot) return;
         ApplyHeldWeaponField(player, "weapon_wear", 0.000001f, "wear=\x06FN\x01");
+    }
+
+    // ============================================================
+    // !glovebestseed — apply the best community seed for equipped gloves' current paint
+    // ============================================================
+    [ConsoleCommand("css_glovebestseed", "Apply the best community seed for equipped gloves' current paint")]
+    [CommandHelper(whoCanExecute: CommandUsage.CLIENT_ONLY)]
+    public void OnGloveBestSeed(CCSPlayerController? player, CommandInfo command)
+    {
+        if (player == null || !player.IsValid || player.IsBot) return;
+        int team = player.TeamNum;
+        string steamId = player.SteamID.ToString();
+        int slot = player.Slot;
+
+        Task.Run(async () =>
+        {
+            string reply;
+            try
+            {
+                await using var conn = new MySqlConnection(ConnString);
+                await conn.OpenAsync();
+
+                // Find equipped glove defindex
+                await using var lookup = conn.CreateCommand();
+                lookup.CommandText = "SELECT weapon_defindex FROM wp_player_gloves WHERE steamid=@sid AND weapon_team=@team";
+                lookup.Parameters.AddWithValue("@sid", steamId);
+                lookup.Parameters.AddWithValue("@team", team);
+                var defObj = await lookup.ExecuteScalarAsync();
+
+                if (defObj == null)
+                {
+                    reply = " \x07[Seed]\x01 No gloves equipped. Pick gloves via !gloves first.";
+                }
+                else
+                {
+                    int gloveDef = Convert.ToInt32(defObj);
+                    // Join best_seeds against the player's current glove paint and apply
+                    await using var upd = conn.CreateCommand();
+                    upd.CommandText = @"
+                        UPDATE wp_player_skins s
+                        JOIN best_seeds bs ON bs.weapon_defindex = s.weapon_defindex AND bs.weapon_paint_id = s.weapon_paint_id
+                        SET s.weapon_seed = bs.best_seed
+                        WHERE s.steamid = @sid AND s.weapon_team = @team AND s.weapon_defindex = @def";
+                    upd.Parameters.AddWithValue("@sid", steamId);
+                    upd.Parameters.AddWithValue("@team", team);
+                    upd.Parameters.AddWithValue("@def", gloveDef);
+                    int rows = await upd.ExecuteNonQueryAsync();
+
+                    if (rows > 0)
+                    {
+                        // Read back the actual seed value for the chat message
+                        await using var read = conn.CreateCommand();
+                        read.CommandText = "SELECT weapon_seed FROM wp_player_skins WHERE steamid=@sid AND weapon_team=@team AND weapon_defindex=@def";
+                        read.Parameters.AddWithValue("@sid", steamId);
+                        read.Parameters.AddWithValue("@team", team);
+                        read.Parameters.AddWithValue("@def", gloveDef);
+                        int seed = Convert.ToInt32(await read.ExecuteScalarAsync() ?? 0);
+                        reply = $" \x06[Seed]\x01 Best glove seed=\x06{seed}\x01 applied (defindex {gloveDef}). Visible next round.";
+                    }
+                    else
+                    {
+                        reply = " \x07[Seed]\x01 No best-seed entry for this glove paint (uniform skin or not yet catalogued).";
+                    }
+                }
+            }
+            catch (Exception ex) { reply = $" \x07[Seed]\x01 SQL: {ex.Message}"; }
+
+            Server.NextFrame(() =>
+            {
+                var p = Utilities.GetPlayerFromSlot(slot);
+                if (p != null && p.IsValid)
+                {
+                    p.PrintToChat(reply);
+                    TriggerWpRefresh(p);
+                }
+            });
+        });
     }
 
     // ============================================================
