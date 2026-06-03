@@ -39,7 +39,7 @@ namespace SeedCommand;
 public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 {
     public override string ModuleName    => "SeedCommand";
-    public override string ModuleVersion => "4.4.1";
+    public override string ModuleVersion => "4.5.0";
     public override string ModuleAuthor  => "Claude Code — commissioned by Mavi (steamcommunity.com/profiles/76561198147748231)";
     public override string ModuleDescription => "WeaponPaints companion: instant skin menus + best-seed + wear control";
 
@@ -819,6 +819,116 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
     {
         if (player == null || !player.IsValid || player.IsBot) return;
         ApplyHeldWeaponField(player, "weapon_wear", 0.000001f, "wear=\x06FN\x01");
+    }
+
+    // ============================================================
+    // !gloveseed <n> — set seed on currently equipped gloves
+    // ============================================================
+    [ConsoleCommand("css_gloveseed", "Set paint seed on equipped gloves")]
+    [ConsoleCommand("css_glovesseed", "Alias of css_gloveseed")]
+    [CommandHelper(minArgs: 1, usage: "<seed_number>", whoCanExecute: CommandUsage.CLIENT_ONLY)]
+    public void OnGloveSeed(CCSPlayerController? player, CommandInfo command)
+    {
+        if (player == null || !player.IsValid || player.IsBot) return;
+        if (!int.TryParse(command.GetArg(1), out int seed) || seed < 0 || seed > 1000000)
+        { command.ReplyToCommand(" \x07[Seed]\x01 Usage: !gloveseed <0 - 1000000>"); return; }
+
+        int team = player.TeamNum;
+        string steamId = player.SteamID.ToString();
+        int slot = player.Slot;
+
+        Task.Run(async () =>
+        {
+            string reply;
+            try
+            {
+                await using var conn = new MySqlConnection(ConnString);
+                await conn.OpenAsync();
+
+                // 1. Look up which glove TYPE is currently equipped
+                await using var lookup = conn.CreateCommand();
+                lookup.CommandText = "SELECT weapon_defindex FROM wp_player_gloves WHERE steamid=@sid AND weapon_team=@team";
+                lookup.Parameters.AddWithValue("@sid", steamId);
+                lookup.Parameters.AddWithValue("@team", team);
+                var defObj = await lookup.ExecuteScalarAsync();
+
+                if (defObj == null)
+                {
+                    reply = " \x07[Seed]\x01 No gloves equipped. Pick gloves via !gloves first.";
+                }
+                else
+                {
+                    int gloveDef = Convert.ToInt32(defObj);
+                    await using var upd = conn.CreateCommand();
+                    upd.CommandText = "UPDATE wp_player_skins SET weapon_seed = @seed WHERE steamid=@sid AND weapon_team=@team AND weapon_defindex=@def";
+                    upd.Parameters.AddWithValue("@seed", seed);
+                    upd.Parameters.AddWithValue("@sid", steamId);
+                    upd.Parameters.AddWithValue("@team", team);
+                    upd.Parameters.AddWithValue("@def", gloveDef);
+                    int rows = await upd.ExecuteNonQueryAsync();
+                    reply = rows > 0
+                        ? $" \x06[Seed]\x01 Glove seed=\x06{seed}\x01 (defindex {gloveDef}). Refresh: gloves apply visually on next round."
+                        : $" \x07[Seed]\x01 No DB row found for glove defindex={gloveDef}. Apply a glove skin via !gloves first.";
+                }
+            }
+            catch (Exception ex) { reply = $" \x07[Seed]\x01 SQL: {ex.Message}"; }
+
+            Server.NextFrame(() =>
+            {
+                var p = Utilities.GetPlayerFromSlot(slot);
+                if (p != null && p.IsValid)
+                {
+                    p.PrintToChat(reply);
+                    TriggerWpRefresh(p);
+                }
+            });
+        });
+    }
+
+    // ============================================================
+    // StatTrak kill counter — increment on player death
+    // ============================================================
+    [GameEventHandler]
+    public HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo info)
+    {
+        var killer = @event.Attacker;
+        var victim = @event.Userid;
+        if (killer == null || !killer.IsValid || killer.IsBot) return HookResult.Continue;
+        // Skip suicides and team-kills only when victim == killer
+        if (victim != null && killer.SteamID == victim.SteamID) return HookResult.Continue;
+
+        var pawn = killer.PlayerPawn.Value;
+        var activeWeapon = pawn?.WeaponServices?.ActiveWeapon.Value;
+        if (activeWeapon == null || !activeWeapon.IsValid) return HookResult.Continue;
+
+        ushort defindex = activeWeapon.AttributeManager.Item.ItemDefinitionIndex;
+        int team = killer.TeamNum;
+        string steamId = killer.SteamID.ToString();
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                await using var conn = new MySqlConnection(ConnString);
+                await conn.OpenAsync();
+                await using var cmd = conn.CreateCommand();
+                // Only increment if this row has StatTrak enabled
+                cmd.CommandText = @"
+                    UPDATE wp_player_skins
+                    SET weapon_stattrak_count = weapon_stattrak_count + 1
+                    WHERE steamid = @sid
+                      AND weapon_team = @team
+                      AND weapon_defindex = @def
+                      AND weapon_stattrak = 1";
+                cmd.Parameters.AddWithValue("@sid", steamId);
+                cmd.Parameters.AddWithValue("@team", team);
+                cmd.Parameters.AddWithValue("@def", (int)defindex);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch { /* silent — don't spam chat on every kill */ }
+        });
+
+        return HookResult.Continue;
     }
 
     private static string WearTier(float w)
