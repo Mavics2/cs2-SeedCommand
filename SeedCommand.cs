@@ -39,7 +39,7 @@ namespace SeedCommand;
 public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 {
     public override string ModuleName    => "SeedCommand";
-    public override string ModuleVersion => "4.5.1";
+    public override string ModuleVersion => "4.6.0";
     public override string ModuleAuthor  => "Claude Code — commissioned by Mavi (steamcommunity.com/profiles/76561198147748231)";
     public override string ModuleDescription => "WeaponPaints companion: instant skin menus + best-seed + wear control";
 
@@ -94,22 +94,37 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
         KnifeTypes.ToDictionary(k => k.defindex, k => k.weaponName);
 
     // Curated list of high-value tournament stickers. IDs sourced from
-    // WeaponPaints/data/stickers_en.json. Add more here if you want them in !sticker.
+    // WeaponPaints/data/stickers_en.json. Ordered roughly by current market value.
+    // Add more here if you want them in !sticker.
     private static readonly List<(int id, string display)> HighValueStickers = new()
     {
-        ( 60, "iBUYPOWER (Holo) | Katowice 2014"),
-        ( 76, "Titan (Holo) | Katowice 2014"),
-        ( 49, "3DMAX (Holo) | Katowice 2014"),
-        ( 51, "compLexity Gaming (Holo) | Katowice 2014"),
-        ( 53, "Team Dignitas (Holo) | Katowice 2014"),
-        ( 58, "HellRaisers (Holo) | Katowice 2014"),
-        ( 64, "LGB eSports (Holo) | Katowice 2014"),
-        ( 66, "mousesports (Holo) | Katowice 2014"),
-        ( 74, "Reason Gaming (Holo) | Katowice 2014"),
-        ( 80, "Vox Eminor (Holo) | Katowice 2014"),
-        ( 37, "Crown (Foil)"),
-        (102, "King on the Field"),
-        (103, "Howling Dawn"),
+        // Katowice 2014 Holos - Top tier ($70k+)
+        ( 74, "Reason Gaming (Holo) | Katowice 2014"),    // ~$73k
+        ( 76, "Titan (Holo) | Katowice 2014"),            // ~$70k
+        ( 60, "iBUYPOWER (Holo) | Katowice 2014"),        // ~$62k
+        // Boston 2018 Golds - Tournament champion player stickers
+        (2863, "Happy (Gold) | Boston 2018"),             // ~$26k
+        // Katowice 2014 Holos - High tier ($10-25k)
+        (  62, "Team LDLC.com (Holo) | Katowice 2014"),   // ~$23k
+        (  80, "Vox Eminor (Holo) | Katowice 2014"),      // ~$23k
+        (  53, "Team Dignitas (Holo) | Katowice 2014"),   // ~$23k
+        (2911, "bondik (Gold) | Boston 2018"),            // ~$18k
+        (  70, "Natus Vincere (Holo) | Katowice 2014"),   // ~$11k
+        // Katowice 2014 Holos - Mid tier ($5-10k)
+        (  58, "HellRaisers (Holo) | Katowice 2014"),     // ~$8k
+        (  72, "Ninjas in Pyjamas (Holo) | Katowice 2014"), // ~$7k
+        (  73, "Reason Gaming | Katowice 2014"),          // paper, ~$7k
+        (2914, "captainMo (Gold) | Boston 2018"),         // ~$6k
+        (  59, "iBUYPOWER | Katowice 2014"),              // paper, ~$5k
+        // Katowice 2014 Holos - Other notable
+        (  49, "3DMAX (Holo) | Katowice 2014"),
+        (  51, "compLexity Gaming (Holo) | Katowice 2014"),
+        (  64, "LGB eSports (Holo) | Katowice 2014"),
+        (  66, "mousesports (Holo) | Katowice 2014"),
+        // Foils and special
+        (  37, "Crown (Foil)"),
+        ( 102, "King on the Field"),
+        ( 103, "Howling Dawn"),
     };
 
     private static readonly Dictionary<int, string> DopplerPhaseTag = new()

@@ -138,21 +138,35 @@ Butterfly Knife uses non-standard paint IDs (617 Black Pearl, 618 Phase 2, 619 S
 
 ## High-value stickers (`!sticker`)
 
-The `!sticker` menu ships with a curated short-list of stickers most players actually care about — instead of dumping the entire ~7000-entry sticker DB:
+The `!sticker` menu ships with a curated short-list of 21 stickers most players actually care about — instead of dumping the entire ~7000-entry sticker DB. Ordered roughly by current market value (csgoskins.gg):
 
-- iBUYPOWER (Holo) | Katowice 2014
-- Titan (Holo) | Katowice 2014
-- 3DMAX (Holo) | Katowice 2014
-- compLexity Gaming (Holo) | Katowice 2014
-- Team Dignitas (Holo) | Katowice 2014
-- HellRaisers (Holo) | Katowice 2014
-- LGB eSports (Holo) | Katowice 2014
-- mousesports (Holo) | Katowice 2014
+**Katowice 2014 Holos — Top tier ($60k+):**
 - Reason Gaming (Holo) | Katowice 2014
+- Titan (Holo) | Katowice 2014
+- iBUYPOWER (Holo) | Katowice 2014
+
+**Boston 2018 Player Golds:**
+- Happy (Gold) | Boston 2018
+- bondik (Gold) | Boston 2018
+- captainMo (Gold) | Boston 2018
+
+**Katowice 2014 Holos — High tier ($10-25k):**
+- Team LDLC.com (Holo) | Katowice 2014
 - Vox Eminor (Holo) | Katowice 2014
-- Crown (Foil)
-- King on the Field
-- Howling Dawn
+- Team Dignitas (Holo) | Katowice 2014
+- Natus Vincere (Holo) | Katowice 2014
+
+**Katowice 2014 Holos — Mid tier ($5-10k):**
+- HellRaisers (Holo) | Katowice 2014
+- Ninjas in Pyjamas (Holo) | Katowice 2014
+- Reason Gaming | Katowice 2014 *(paper)*
+- iBUYPOWER | Katowice 2014 *(paper)*
+
+**Other notable Katowice 2014 Holos:**
+- 3DMAX, compLexity Gaming, LGB eSports, mousesports
+
+**Foils and special:**
+- Crown (Foil), King on the Field, Howling Dawn
 
 Add more to the `HighValueStickers` list in `SeedCommand.cs` if you want them in the menu — IDs can be found in `WeaponPaints/data/stickers_en.json`.
 
