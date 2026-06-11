@@ -39,7 +39,7 @@ namespace SeedCommand;
 public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 {
     public override string ModuleName    => "SeedCommand";
-    public override string ModuleVersion => "4.6.0";
+    public override string ModuleVersion => "4.6.1";
     public override string ModuleAuthor  => "Claude Code — commissioned by Mavi (steamcommunity.com/profiles/76561198147748231)";
     public override string ModuleDescription => "WeaponPaints companion: instant skin menus + best-seed + wear control";
 
@@ -629,6 +629,9 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
         menuDyn.Open(p);
     }
 
+    // Cached RNG for slot-4 random offset
+    private static readonly Random StickerRng = new();
+
     private void ApplySticker(int slot, int defindex, string weaponClassname, int stickerSlot, int stickerId, string stickerName, bool suppressRefresh = false)
     {
         var p = Utilities.GetPlayerFromSlot(slot);
@@ -636,8 +639,21 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
         string steamId = p.SteamID.ToString();
         int team = p.TeamNum;
         string column = $"weapon_sticker_{stickerSlot}";
+
         // WP sticker DB format: id;schema;OffsetX;OffsetY;Wear;Scale;Rotation
-        string stickerData = $"{stickerId};0;0;0;0;1;0";
+        // Slot 4 (the 5th slot) renders clipped or behind another sticker on most weapons
+        // when placed at the default (0,0) mount point — only M4A1-S renders it correctly.
+        // Workaround: shift slot 4 to an offset away from the default. Slight randomization
+        // so it doesn't always end up at the exact same alternate spot.
+        float offsetX = 0f, offsetY = 0f;
+        if (stickerSlot == 4)
+        {
+            // Pick a random offset in a safe visible range. Y > 0 nudges down toward
+            // the magazine area on most weapons, which is visible on rifles + SMGs.
+            offsetX = (float)(StickerRng.NextDouble() * 0.30 - 0.15);   //  -0.15 .. +0.15
+            offsetY = (float)(StickerRng.NextDouble() * 0.10 + 0.10);   //  +0.10 .. +0.20
+        }
+        string stickerData = $"{stickerId};0;{offsetX.ToString(CultureInfo.InvariantCulture)};{offsetY.ToString(CultureInfo.InvariantCulture)};0;1;0";
 
         Task.Run(async () =>
         {
