@@ -39,7 +39,7 @@ namespace SeedCommand;
 public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 {
     public override string ModuleName    => "SeedCommand";
-    public override string ModuleVersion => "4.6.1";
+    public override string ModuleVersion => "4.6.2";
     public override string ModuleAuthor  => "Claude Code — commissioned by Mavi (steamcommunity.com/profiles/76561198147748231)";
     public override string ModuleDescription => "WeaponPaints companion: instant skin menus + best-seed + wear control";
 
@@ -632,6 +632,14 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
     // Cached RNG for slot-4 random offset
     private static readonly Random StickerRng = new();
 
+    // Weapons whose slot 4 (5th sticker) renders correctly at default (0,0).
+    // For these we skip the random-offset workaround. Verified visually in-game.
+    private static readonly HashSet<int> Slot4DefaultOkDefindexes = new()
+    {
+        9,   // AWP
+        60,  // M4A1-S
+    };
+
     private void ApplySticker(int slot, int defindex, string weaponClassname, int stickerSlot, int stickerId, string stickerName, bool suppressRefresh = false)
     {
         var p = Utilities.GetPlayerFromSlot(slot);
@@ -642,11 +650,10 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 
         // WP sticker DB format: id;schema;OffsetX;OffsetY;Wear;Scale;Rotation
         // Slot 4 (the 5th slot) renders clipped or behind another sticker on most weapons
-        // when placed at the default (0,0) mount point — only M4A1-S renders it correctly.
-        // Workaround: shift slot 4 to an offset away from the default. Slight randomization
-        // so it doesn't always end up at the exact same alternate spot.
+        // when placed at the default (0,0) mount point. A handful of weapons render slot 4
+        // correctly at default — those are exempt from the workaround below.
         float offsetX = 0f, offsetY = 0f;
-        if (stickerSlot == 4)
+        if (stickerSlot == 4 && !Slot4DefaultOkDefindexes.Contains(defindex))
         {
             // Pick a random offset in a safe visible range. Y > 0 nudges down toward
             // the magazine area on most weapons, which is visible on rifles + SMGs.
