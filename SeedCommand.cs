@@ -39,7 +39,7 @@ namespace SeedCommand;
 public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 {
     public override string ModuleName    => "SeedCommand";
-    public override string ModuleVersion => "4.6.2";
+    public override string ModuleVersion => "4.7.0";
     public override string ModuleAuthor  => "Claude Code — commissioned by Mavi (steamcommunity.com/profiles/76561198147748231)";
     public override string ModuleDescription => "WeaponPaints companion: instant skin menus + best-seed + wear control";
 
@@ -634,10 +634,46 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 
     // Weapons whose slot 4 (5th sticker) renders correctly at default (0,0).
     // For these we skip the random-offset workaround. Verified visually in-game.
+    // Weapons in WeaponStickerOffsets below override this — they have full per-slot layouts.
     private static readonly HashSet<int> Slot4DefaultOkDefindexes = new()
     {
         9,   // AWP
         60,  // M4A1-S
+    };
+
+    // Per-weapon sticker offset layouts — designed via cs2inspects.com customizer and
+    // decoded from real inspect URLs. When applying a sticker via !sticker, the slot's
+    // OffsetX/OffsetY come from this table instead of (0,0).
+    // Each entry: defindex -> (offsetX[5], offsetY[5]) for slots 0..4.
+    private static readonly Dictionary<int, (float[] x, float[] y)> WeaponStickerOffsets = new()
+    {
+        // AK-47
+        { 7,  (new[]{-0.318747f,  0.085099f,  0.067930f,  0.102268f, -0.123564f},
+               new[]{-0.002986f, -0.001493f,  0.000746f,  0.008958f,  0.072433f}) },
+        // Desert Eagle
+        { 1,  (new[]{ 0.097686f, -0.017667f, -0.067549f, -0.020784f,  0.133020f},
+               new[]{ 0.179784f, -0.007275f, -0.008314f, -0.004157f,  0.320078f}) },
+        // Glock-18
+        { 4,  (new[]{ 0.013043f, -0.013043f, -0.045652f,  0.026087f,  0.078261f},
+               new[]{-0.002609f,  0.000000f,  0.000000f,  0.146087f,  0.297391f}) },
+        // Five-SeveN
+        { 3,  (new[]{-0.022262f,  0.005238f,  0.057619f,  0.230476f,  0.525119f},
+               new[]{ 0.002619f, -0.001310f, -0.034048f,  0.172857f,  0.356191f}) },
+        // M4A4
+        { 16, (new[]{-0.359406f, -0.187129f, -0.015594f, -0.046782f, -0.126238f},
+               new[]{-0.020050f, -0.013366f, -0.048267f, -0.021535f,  0.046040f}) },
+        // USP-S
+        { 61, (new[]{-0.260638f, -0.122340f,  0.137234f,  0.269149f, -0.419107f},
+               new[]{-0.006383f, -0.004255f, -0.006383f,  0.142553f, -0.005739f}) },
+        // AWP
+        { 9,  (new[]{-0.169077f, -0.065084f, -0.059424f,  0.000000f, -0.114667f},
+               new[]{-0.029005f,  0.019808f, -0.009904f,  0.002122f, -0.077389f}) },
+        // M4A1-S
+        { 60, (new[]{ 0.000000f,  0.000000f,  0.000000f, -0.003641f, -0.078641f},
+               new[]{ 0.000000f,  0.000000f,  0.000000f,  0.005097f,  0.005097f}) },
+        // P250
+        { 36, (new[]{ 0.012931f, -0.236638f, -0.486207f,  0.014224f,  0.056897f},
+               new[]{-0.012931f, -0.012931f, -0.011638f,  0.173276f,  0.338793f}) },
     };
 
     private void ApplySticker(int slot, int defindex, string weaponClassname, int stickerSlot, int stickerId, string stickerName, bool suppressRefresh = false)
@@ -649,14 +685,18 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
         string column = $"weapon_sticker_{stickerSlot}";
 
         // WP sticker DB format: id;schema;OffsetX;OffsetY;Wear;Scale;Rotation
-        // Slot 4 (the 5th slot) renders clipped or behind another sticker on most weapons
-        // when placed at the default (0,0) mount point. A handful of weapons render slot 4
-        // correctly at default — those are exempt from the workaround below.
         float offsetX = 0f, offsetY = 0f;
-        if (stickerSlot == 4 && !Slot4DefaultOkDefindexes.Contains(defindex))
+
+        // Use weapon-specific designed layout if we have one for this defindex
+        if (WeaponStickerOffsets.TryGetValue(defindex, out var layout))
         {
-            // Pick a random offset in a safe visible range. Y > 0 nudges down toward
-            // the magazine area on most weapons, which is visible on rifles + SMGs.
+            offsetX = layout.x[stickerSlot];
+            offsetY = layout.y[stickerSlot];
+        }
+        else if (stickerSlot == 4 && !Slot4DefaultOkDefindexes.Contains(defindex))
+        {
+            // Fallback for weapons without a designed layout: slot 4 random nudge so
+            // it doesn't land on the clipped default position. Y > 0 → magazine area.
             offsetX = (float)(StickerRng.NextDouble() * 0.30 - 0.15);   //  -0.15 .. +0.15
             offsetY = (float)(StickerRng.NextDouble() * 0.10 + 0.10);   //  +0.10 .. +0.20
         }
