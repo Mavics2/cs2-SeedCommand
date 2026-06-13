@@ -39,7 +39,7 @@ namespace SeedCommand;
 public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
 {
     public override string ModuleName    => "SeedCommand";
-    public override string ModuleVersion => "4.7.1";
+    public override string ModuleVersion => "4.7.2";
     public override string ModuleAuthor  => "Claude Code — commissioned by Mavi (steamcommunity.com/profiles/76561198147748231)";
     public override string ModuleDescription => "WeaponPaints companion: instant skin menus + best-seed + wear control";
 
@@ -641,11 +641,20 @@ public class SeedCommandPlugin : BasePlugin, IPluginConfig<SeedCommandConfig>
         60,  // M4A1-S
     };
 
-    // Per-weapon designed layouts — currently empty. cs2inspects.com sticker customizer
-    // outputs canvas coordinates that don't match CS2's UV offset system, so layouts
-    // designed there don't render correctly in-game. To add a layout, the only reliable
-    // source is a real CS2 inspect URL (someone's actual item from Steam Market / inventory).
-    private static readonly Dictionary<int, (float[] x, float[] y)> WeaponStickerOffsets = new();
+    // Per-weapon designed sticker layouts.
+    //
+    // cs2inspects.com customizer URLs translate to CS2's UV system ONLY if all the
+    // customizer stickers are placed on the same slot (e.g. all on slot 0). The offsets
+    // are then relative to a single mount point, which CS2 can apply consistently across
+    // its 5 hard-coded slot mount points.
+    //
+    // Verified working: P250.
+    private static readonly Dictionary<int, (float[] x, float[] y)> WeaponStickerOffsets = new()
+    {
+        // P250 (single-slot customizer design)
+        { 36, (new[]{ 0.012931f, -0.236638f, -0.486207f,  0.014224f,  0.056897f},
+               new[]{-0.012931f, -0.012931f, -0.011638f,  0.173276f,  0.338793f}) },
+    };
 
     private void ApplySticker(int slot, int defindex, string weaponClassname, int stickerSlot, int stickerId, string stickerName, bool suppressRefresh = false)
     {
